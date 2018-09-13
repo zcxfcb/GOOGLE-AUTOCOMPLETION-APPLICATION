@@ -11,11 +11,12 @@ import java.util.*;
 public class LanguageModel {
 	public static class Map extends Mapper<LongWritable, Text, Text, Text> {
 
-		int threashold;
+		int threshold;
 
 		@Override
 		public void setup(Context context) {
-			// how to get the threashold parameter from the configuration?
+			Configuration config = context.getConfiguration();
+			threshold = config.getInt("threshold", 15);
 		}
 
 		
@@ -24,32 +25,44 @@ public class LanguageModel {
 			if((value == null) || (value.toString().trim()).length() == 0) {
 				return;
 			}
-			//this is cool\t20
+			// \t is used as delimiter for result output from last mapreduce job
 			String line = value.toString().trim();
 			
-			String[] wordsPlusCount = line.split("\t");
-			if(wordsPlusCount.length < 2) {
-				return;
+			String[] wordsAndCount = line.split("\t");
+			if(wordsAndCount.length < 2) {
+				throw new InterruptedException();
 			}
 			
-			String[] words = wordsPlusCount[0].split("\\s+");
-			int count = Integer.valueOf(wordsPlusCount[1]);
+			String[] words = wordsAndCount[0].split("\\s+");
+			int count = Integer.valueOf(wordsAndCount[1]);
 
-			//how to filter the n-gram lower than threashold
-			
-			//this is --> cool = 20
+			if (words.length < 2) {
+				throw new InterruptedException();
+			}
 
-			//what is the outputkey?
-			//what is the outputvalue?
-			
-			//write key-value to reducer?
+			if (count >= threshold) {
+				StringBuilder pre = new StringBuilder(words[0]);
+				int i = 1;
+				for(; i < words.length - 1; i++) {
+					pre.append(" ").append(words[i]);
+				}
+				context.write(new Text(pre.toString().trim()), new Text(words[i] + "+" + count));
+			}
 		}
 	}
 
 	public static class Reduce extends Reducer<Text, Text, DBOutputWritable, NullWritable> {
 
+		public static class wordPlusCount {
+			String word;
+			Integer count;
+			public wordPlusCount (String word, Integer count) {
+				this.word = word;
+				this.count = count;
+			}
+		}
+
 		int n;
-		// get the n parameter from the configuration
 		@Override
 		public void setup(Context context) {
 			Configuration conf = context.getConfiguration();
@@ -58,8 +71,29 @@ public class LanguageModel {
 
 		@Override
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-			
-			//can you use priorityQueue to rank topN n-gram, then write out to hdfs?
+
+			PriorityQueue<wordPlusCount> pq = new PriorityQueue<wordPlusCount>(10, new Comparator<wordPlusCount>() {
+				public int compare(wordPlusCount lhs, wordPlusCount rhs) {
+					if (lhs.count > rhs.count) {
+						return +1;
+					}
+					if (rhs.count.equals(lhs.count)) {
+						return 0;
+					}
+					return -1;
+				}
+			});
+
+			for (Text value : values) {
+				String[] arr = value.toString().split("\\+");
+				wordPlusCount entry = new wordPlusCount(arr[0], Integer.valueOf(arr[1]));
+				pq.add(entry);
+			}
+
+			for(int i = 0; i < n; i++) {
+				wordPlusCount top = pq.poll();
+				context.write(new DBOutputWritable(key.toString(), top.word, top.count), NullWritable.get());
+			}
 		}
 	}
 }

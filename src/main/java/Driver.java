@@ -19,6 +19,7 @@ public class Driver {
 		Configuration conf1 = new Configuration();
 
 		//how to customize separator?
+		conf1.set("textinputformat.record.delimiter", ".");
 
 		conf1.set("noGram", args[2]);
 		
@@ -38,26 +39,24 @@ public class Driver {
 		TextInputFormat.setInputPaths(job1, new Path(args[0]));
 		TextOutputFormat.setOutputPath(job1, new Path(args[1]));
 		job1.waitForCompletion(true);
-		
-		//how to connect two jobs?
-		// last output is second input
+
 		
 		//2nd job
 		Configuration conf2 = new Configuration();
-		conf2.set("threashold", args[3]);
+		conf2.set("threshold", args[3]);
 		conf2.set("n", args[4]);
 		
 		DBConfiguration.configureDB(conf2, 
 				"com.mysql.jdbc.Driver",
-				"jdbc:mysql://ip_address:port/test",
+				"jdbc:mysql://192.168.1.103:8889/test", //ip address:port
 				"root",
-				"password");
+				"root");
 		
 		Job job2 = Job.getInstance(conf2);
 		job2.setJobName("Model");
 		job2.setJarByClass(Driver.class);
 		
-		job2.addArchiveToClassPath(new Path("path_to_ur_connector"));
+		job2.addArchiveToClassPath(new Path("mysql/mysql-connector-java-5.1.39-bin.jar"));
 		job2.setMapOutputKeyClass(Text.class);
 		job2.setMapOutputValueClass(Text.class);
 		job2.setOutputKeyClass(DBOutputWritable.class);
